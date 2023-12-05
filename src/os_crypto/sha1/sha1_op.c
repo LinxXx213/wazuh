@@ -10,6 +10,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <openssl/evp.h>
 
 #include "sha1_op.h"
 #include "headers/defs.h"
@@ -26,7 +27,6 @@
 */
 
 int OS_SHA1_File(const char *fname, os_sha1 output, int mode) {
-    SHA_CTX c;
     FILE *fp;
     unsigned char buf[2048 + 2];
     unsigned char md[SHA_DIGEST_LENGTH];
@@ -40,13 +40,22 @@ int OS_SHA1_File(const char *fname, os_sha1 output, int mode) {
         return (-1);
     }
 
-    SHA1_Init(&c);
-    while ((n = fread(buf, 1, 2048, fp)) > 0) {
-        buf[n] = '\0';
-        SHA1_Update(&c, buf, n);
+    EVP_MD_CTX *sha1_ctx = EVP_MD_CTX_new();
+    if (!sha1_ctx)
+    {
+        fclose(fp);
+        return (-1);
     }
 
-    SHA1_Final(&(md[0]), &c);
+    EVP_DigestInit(sha1_ctx, EVP_sha1());
+
+    while ((n = fread(buf, 1, 2048, fp)) > 0) {
+        buf[n] = '\0';
+        EVP_DigestUpdate(sha1_ctx, buf, n);
+    }
+
+    EVP_DigestFinal(sha1_ctx, md, NULL);
+    EVP_MD_CTX_free(sha1_ctx);
 
     for (n = 0; n < SHA_DIGEST_LENGTH; n++) {
         snprintf(output, 3, "%02x", md[n]);
@@ -62,10 +71,16 @@ int OS_SHA1_Str(const char *str, ssize_t length, os_sha1 output) {
     unsigned char md[SHA_DIGEST_LENGTH];
     size_t n;
 
-    SHA_CTX c;
-    SHA1_Init(&c);
-    SHA1_Update(&c, (const unsigned char *)str, length < 0 ? (unsigned)strlen(str) : (unsigned)length);
-    SHA1_Final(&(md[0]), &c);
+    EVP_MD_CTX *sha1_ctx = EVP_MD_CTX_new();
+    if (!sha1_ctx)
+    {
+        return (-1);
+    }
+
+    EVP_DigestInit(sha1_ctx, EVP_sha1());
+    EVP_DigestUpdate(sha1_ctx, (const unsigned char *)str, length < 0 ? (unsigned)strlen(str) : (unsigned)length);
+    EVP_DigestFinal(sha1_ctx, md, NULL);
+    EVP_MD_CTX_free(sha1_ctx);
 
     for (n = 0; n < SHA_DIGEST_LENGTH; n++) {
         snprintf(output, 3, "%02x", md[n]);
@@ -93,17 +108,23 @@ int OS_SHA1_Str2(const char *str, ssize_t length, os_sha1 output) {
 int OS_SHA1_strings(os_sha1 output, ...) {
     unsigned char md[SHA_DIGEST_LENGTH];
     size_t n;
-    SHA_CTX c;
-    SHA1_Init(&c);
+
+    EVP_MD_CTX *sha1_ctx = EVP_MD_CTX_new();
+    if (!sha1_ctx)
+    {
+        return (-1);
+    }
+    EVP_DigestInit(sha1_ctx, EVP_sha1());
 
     va_list parameters;
     char* parameter = NULL;
     va_start(parameters, output);
     while (parameter = va_arg(parameters, char*), parameter) {
-        SHA1_Update(&c, parameter, strlen(parameter));
+        EVP_DigestUpdate(sha1_ctx, parameter, strlen(parameter));
     }
     va_end(parameters);
-    SHA1_Final(&(md[0]), &c);
+    EVP_DigestFinal(sha1_ctx, md, NULL);
+    EVP_MD_CTX_free(sha1_ctx);
 
     for (n = 0; n < SHA_DIGEST_LENGTH; n++) {
         snprintf(output, 3, "%02x", md[n]);
@@ -123,15 +144,15 @@ void OS_SHA1_Hexdigest(const unsigned char * digest, os_sha1 output) {
     }
 }
 
-int OS_SHA1_File_Nbytes(const char *fname, SHA_CTX *c, os_sha1 output, int mode, int64_t nbytes) {
+int OS_SHA1_File_Nbytes(const char *fname, EVP_MD_CTX *c, os_sha1 output, int mode, int64_t nbytes) {
     return OS_SHA1_File_Nbytes_with_fp_check(fname, c, output, mode, nbytes, 0);
 }
 
 #ifndef WIN32
-int OS_SHA1_File_Nbytes_with_fp_check(const char * fname, SHA_CTX * c, os_sha1 output, int mode, int64_t nbytes,
+int OS_SHA1_File_Nbytes_with_fp_check(const char * fname, EVP_MD_CTX * c, os_sha1 output, int mode, int64_t nbytes,
                                       ino_t fd_check) {
 #else
-int OS_SHA1_File_Nbytes_with_fp_check(const char * fname, SHA_CTX * c, os_sha1 output, int mode, int64_t nbytes,
+int OS_SHA1_File_Nbytes_with_fp_check(const char * fname, EVP_MD_CTX * c, os_sha1 output, int mode, int64_t nbytes,
                                       DWORD fd_check) {
 #endif
 
@@ -143,7 +164,7 @@ int OS_SHA1_File_Nbytes_with_fp_check(const char * fname, SHA_CTX * c, os_sha1 o
     memset(output, 0, sizeof(os_sha1));
     buf[OS_MAXSTR - 1] = '\0';
 
-    SHA1_Init(c);
+    EVP_MD_CTX_reset(c);
 
     /* It's important to read \r\n instead of \n to generate the correct hash */
 #ifdef WIN32
@@ -192,12 +213,14 @@ int OS_SHA1_File_Nbytes_with_fp_check(const char * fname, SHA_CTX * c, os_sha1 o
         }
 
         buf[n] = '\0';
-        SHA1_Update(c, buf, n);
+        EVP_DigestUpdate(c, buf, n);
     }
 
-    SHA_CTX aux = *c;
+    EVP_MD_CTX *aux = EVP_MD_CTX_new();
+    EVP_MD_CTX_copy(aux, c);
 
-    SHA1_Final(&(md[0]), &aux);
+    EVP_DigestFinal(aux, md, NULL);
+    EVP_MD_CTX_free(aux);
 
     OS_SHA1_Hexdigest(md, output);
 
@@ -206,19 +229,20 @@ int OS_SHA1_File_Nbytes_with_fp_check(const char * fname, SHA_CTX * c, os_sha1 o
     return (0);
 }
 
-void OS_SHA1_Stream(SHA_CTX *c, os_sha1 output, char * buf) {
+void OS_SHA1_Stream(EVP_MD_CTX *c, os_sha1 output, char * buf) {
     if(buf) {
         size_t n = strlen(buf);
 
-        SHA1_Update(c, buf, n);
+        EVP_DigestUpdate(c, buf, n);
     }
 
     if(output) {
         memset(output, 0, sizeof(os_sha1));
         unsigned char md[SHA_DIGEST_LENGTH];
-        SHA_CTX aux = *c;
-
-        SHA1_Final(&(md[0]), &aux);
+        EVP_MD_CTX *aux = EVP_MD_CTX_new();
+        EVP_MD_CTX_copy(aux, c);
+        EVP_DigestFinal(aux, md, NULL);
+        EVP_MD_CTX_free(aux);
 
         OS_SHA1_Hexdigest(md, output);
     }

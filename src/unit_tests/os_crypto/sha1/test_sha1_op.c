@@ -17,7 +17,7 @@
 #include "../../wrappers/libc/stdio_wrappers.h"
 #include "../../wrappers/common.h"
 
-int OS_SHA1_File_Nbytes(const char *fname, SHA_CTX *c, os_sha1 output, int mode, int64_t nbytes);
+int OS_SHA1_File_Nbytes(const char *fname, EVP_MD_CTX *c, os_sha1 output, int mode, int64_t nbytes);
 
 /* setups/teardowns */
 static int setup_group(void **state) {
@@ -37,9 +37,9 @@ static int teardown_group(void **state) {
 void OS_SHA1_File_Nbytes_unable_open_file (void **state)
 {
     const char *path = "/home/test_file";
-    SHA_CTX context;
     os_sha1 output;
     ssize_t nbytes = 4096;
+    EVP_MD_CTX* context = EVP_MD_CTX_new();
 
     int mode = OS_BINARY;
 
@@ -47,15 +47,16 @@ void OS_SHA1_File_Nbytes_unable_open_file (void **state)
     expect_string(__wrap_fopen, mode, "rb");
     will_return(__wrap_fopen, NULL);
 
-    assert_int_equal(OS_SHA1_File_Nbytes(path, &context, output, mode, nbytes), -1);
+    assert_int_equal(OS_SHA1_File_Nbytes(path, context, output, mode, nbytes), -1);
+    EVP_MD_CTX_free(context);
 }
 
 void OS_SHA1_File_Nbytes_ok (void **state)
 {
     const char *path = "/home/test_file";
-    SHA_CTX context;
     os_sha1 output;
     ssize_t nbytes = 4000;
+    EVP_MD_CTX* context = EVP_MD_CTX_new();
 
     int mode = OS_BINARY;
 
@@ -72,15 +73,16 @@ void OS_SHA1_File_Nbytes_ok (void **state)
     expect_value(__wrap_fclose, _File, 1);
     will_return(__wrap_fclose, 1);
 
-    assert_int_equal(OS_SHA1_File_Nbytes(path, &context, output, mode, nbytes), 0);
+    assert_int_equal(OS_SHA1_File_Nbytes(path, context, output, mode, nbytes), 0);
+    EVP_MD_CTX_free(context);
 }
 
 void OS_SHA1_File_Nbytes_num_bytes_exceded (void **state)
 {
     const char *path = "/home/test_file";
-    SHA_CTX context;
     os_sha1 output;
     ssize_t nbytes = 6;
+    EVP_MD_CTX* context = EVP_MD_CTX_new();
 
     int mode = OS_BINARY;
 
@@ -94,7 +96,8 @@ void OS_SHA1_File_Nbytes_num_bytes_exceded (void **state)
     expect_value(__wrap_fclose, _File, 1);
     will_return(__wrap_fclose, 1);
 
-    assert_int_equal(OS_SHA1_File_Nbytes(path, &context, output, mode, nbytes), 0);
+    assert_int_equal(OS_SHA1_File_Nbytes(path, context, output, mode, nbytes), 0);
+    EVP_MD_CTX_free(context);
 }
 
 /* OS_SHA1_Stream */
@@ -103,22 +106,26 @@ void OS_SHA1_Stream_ok (void **state)
 {
     char *buf = "hello";
     os_sha1 output;
-    SHA_CTX context;
+    EVP_MD_CTX* context = EVP_MD_CTX_new();
 
-    SHA1_Init(&context);
+    EVP_DigestInit(context, EVP_sha1());
 
-    OS_SHA1_Stream(&context, output, buf);
+    OS_SHA1_Stream(context, output, buf);
+
+    EVP_MD_CTX_free(context);
 }
 
 void OS_SHA1_Stream_buf_null (void **state)
 {
     char *buf = NULL;
     os_sha1 output;
-    SHA_CTX context;
+    EVP_MD_CTX* context = EVP_MD_CTX_new();
 
-    SHA1_Init(&context);
+    EVP_DigestInit(context, EVP_sha1());
 
-    OS_SHA1_Stream(&context, output, buf);
+    OS_SHA1_Stream(context, output, buf);
+
+    EVP_MD_CTX_free(context);
 }
 
 void test_sha1_string(void **state)
