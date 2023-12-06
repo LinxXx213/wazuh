@@ -6,9 +6,10 @@ import sys
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
-from aiohttp import web_response
-from api.controllers.test.utils import CustomAffectedItems
 from connexion.lifecycle import ConnexionResponse
+from connexion.testing import TestContext
+from api.controllers.test.utils import CustomAffectedItems
+
 
 with patch('wazuh.common.wazuh_uid'):
     with patch('wazuh.common.wazuh_gid'):
@@ -26,15 +27,26 @@ with patch('wazuh.common.wazuh_uid'):
             wazuh.rbac.decorators.expose_resources = RBAC_bypasser
             del sys.modules['wazuh.rbac.orm']
 
+@pytest.fixture
+def mock_request():
+    """fixture to wrap functions with request"""
+    operation = MagicMock(name="operation")
+    operation.method = "post"
+    with TestContext(operation=operation):
+        with patch('api.controllers.rule_controller.request') as m_req:
+            m_req.query_params.get = lambda key, default: None
+            m_req.context = {'token_info': {'rbac_policies': {}}}
+            yield m_req
+
 
 @pytest.mark.asyncio
 @patch('api.controllers.rule_controller.DistributedAPI.distribute_function', return_value=AsyncMock())
 @patch('api.controllers.rule_controller.remove_nones_to_dict')
 @patch('api.controllers.rule_controller.DistributedAPI.__init__', return_value=None)
 @patch('api.controllers.rule_controller.raise_if_exc', return_value=CustomAffectedItems())
-async def test_get_rules(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_request=MagicMock()):
+async def test_get_rules(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_request):
     """Verify 'get_rules' endpoint is working as expected."""
-    result = await get_rules(request=mock_request)
+    result = await get_rules()
     f_kwargs = {'rule_ids': None,
                 'offset': 0,
                 'limit': None,
@@ -53,7 +65,7 @@ async def test_get_rules(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_requ
                 'gdpr': None,
                 'gpg13': None,
                 'hipaa': None,
-                'nist_800_53': mock_request.query.get('nist-800-53', None),
+                'nist_800_53': mock_request.query_params.get('nist-800-53', None),
                 'tsc': None,
                 'mitre': None,
                 'distinct': False
@@ -64,11 +76,11 @@ async def test_get_rules(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_requ
                                       is_async=False,
                                       wait_for_complete=False,
                                       logger=ANY,
-                                      rbac_permissions=mock_request['token_info']['rbac_policies']
+                                      rbac_permissions=mock_request.context['token_info']['rbac_policies']
                                       )
     mock_exc.assert_called_once_with(mock_dfunc.return_value)
     mock_remove.assert_called_once_with(f_kwargs)
-    assert isinstance(result, web_response.Response)
+    assert isinstance(result, ConnexionResponse)
 
 
 @pytest.mark.asyncio
@@ -76,9 +88,9 @@ async def test_get_rules(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_requ
 @patch('api.controllers.rule_controller.remove_nones_to_dict')
 @patch('api.controllers.rule_controller.DistributedAPI.__init__', return_value=None)
 @patch('api.controllers.rule_controller.raise_if_exc', return_value=CustomAffectedItems())
-async def test_get_rules_groups(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_request=MagicMock()):
+async def test_get_rules_groups(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_request):
     """Verify 'get_rules_groups' endpoint is working as expected."""
-    result = await get_rules_groups(request=mock_request)
+    result = await get_rules_groups()
     f_kwargs = {'offset': 0,
                 'limit': None,
                 'sort_by': [''],
@@ -92,11 +104,11 @@ async def test_get_rules_groups(mock_exc, mock_dapi, mock_remove, mock_dfunc, mo
                                       is_async=False,
                                       wait_for_complete=False,
                                       logger=ANY,
-                                      rbac_permissions=mock_request['token_info']['rbac_policies']
+                                      rbac_permissions=mock_request.context['token_info']['rbac_policies']
                                       )
     mock_exc.assert_called_once_with(mock_dfunc.return_value)
     mock_remove.assert_called_once_with(f_kwargs)
-    assert isinstance(result, web_response.Response)
+    assert isinstance(result, ConnexionResponse)
 
 
 @pytest.mark.asyncio
@@ -104,9 +116,9 @@ async def test_get_rules_groups(mock_exc, mock_dapi, mock_remove, mock_dfunc, mo
 @patch('api.controllers.rule_controller.remove_nones_to_dict')
 @patch('api.controllers.rule_controller.DistributedAPI.__init__', return_value=None)
 @patch('api.controllers.rule_controller.raise_if_exc', return_value=CustomAffectedItems())
-async def test_get_rules_requirement(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_request=MagicMock()):
+async def test_get_rules_requirement(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_request):
     """Verify 'get_rules_requirement' endpoint is working as expected."""
-    result = await get_rules_requirement(request=mock_request,
+    result = await get_rules_requirement(
                                          requirement='-')
     f_kwargs = {'requirement': '_',
                 'sort_by': [''],
@@ -122,11 +134,11 @@ async def test_get_rules_requirement(mock_exc, mock_dapi, mock_remove, mock_dfun
                                       is_async=False,
                                       wait_for_complete=False,
                                       logger=ANY,
-                                      rbac_permissions=mock_request['token_info']['rbac_policies']
+                                      rbac_permissions=mock_request.context['token_info']['rbac_policies']
                                       )
     mock_exc.assert_called_once_with(mock_dfunc.return_value)
     mock_remove.assert_called_once_with(f_kwargs)
-    assert isinstance(result, web_response.Response)
+    assert isinstance(result, ConnexionResponse)
 
 
 @pytest.mark.asyncio
@@ -134,9 +146,9 @@ async def test_get_rules_requirement(mock_exc, mock_dapi, mock_remove, mock_dfun
 @patch('api.controllers.rule_controller.remove_nones_to_dict')
 @patch('api.controllers.rule_controller.DistributedAPI.__init__', return_value=None)
 @patch('api.controllers.rule_controller.raise_if_exc', return_value=CustomAffectedItems())
-async def test_get_rules_files(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_request=MagicMock()):
+async def test_get_rules_files(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_request):
     """Verify 'get_rules_files' endpoint is working as expected."""
-    result = await get_rules_files(request=mock_request)
+    result = await get_rules_files()
     f_kwargs = {'offset': 0,
                 'limit': None,
                 'sort_by': ['filename'],
@@ -156,11 +168,11 @@ async def test_get_rules_files(mock_exc, mock_dapi, mock_remove, mock_dfunc, moc
                                       is_async=False,
                                       wait_for_complete=False,
                                       logger=ANY,
-                                      rbac_permissions=mock_request['token_info']['rbac_policies']
+                                      rbac_permissions=mock_request.context['token_info']['rbac_policies']
                                       )
     mock_exc.assert_called_once_with(mock_dfunc.return_value)
     mock_remove.assert_called_once_with(f_kwargs)
-    assert isinstance(result, web_response.Response)
+    assert isinstance(result, ConnexionResponse)
 
 
 @pytest.mark.asyncio
@@ -169,10 +181,10 @@ async def test_get_rules_files(mock_exc, mock_dapi, mock_remove, mock_dfunc, moc
 @patch('api.controllers.rule_controller.DistributedAPI.__init__', return_value=None)
 @patch('api.controllers.rule_controller.raise_if_exc', return_value=CustomAffectedItems())
 @pytest.mark.parametrize('mock_bool', [True, False])
-async def test_get_file(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_bool, mock_request=MagicMock()):
+async def test_get_file(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_bool, mock_request):
     """Verify 'get_file' endpoint is working as expected."""
     with patch('api.controllers.rule_controller.isinstance', return_value=mock_bool) as mock_isinstance:
-        result = await get_file(request=mock_request)
+        result = await get_file()
         f_kwargs = {'filename': None,
                     'raw': False,
                     'relative_dirname': None
@@ -183,12 +195,12 @@ async def test_get_file(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_bool,
                                           is_async=False,
                                           wait_for_complete=False,
                                           logger=ANY,
-                                          rbac_permissions=mock_request['token_info']['rbac_policies']
+                                          rbac_permissions=mock_request.context['token_info']['rbac_policies']
                                           )
         mock_exc.assert_called_once_with(mock_dfunc.return_value)
         mock_remove.assert_called_once_with(f_kwargs)
         if mock_isinstance.return_value:
-            assert isinstance(result, web_response.Response)
+            assert isinstance(result, ConnexionResponse)
         else:
             assert isinstance(result, ConnexionResponse)
 
@@ -198,11 +210,11 @@ async def test_get_file(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_bool,
 @patch('api.controllers.rule_controller.remove_nones_to_dict')
 @patch('api.controllers.rule_controller.DistributedAPI.__init__', return_value=None)
 @patch('api.controllers.rule_controller.raise_if_exc', return_value=CustomAffectedItems())
-async def test_put_file(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_request=MagicMock()):
+async def test_put_file(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_request):
     """Verify 'put_file' endpoint is working as expected."""
     with patch('api.controllers.rule_controller.Body.validate_content_type'):
         with patch('api.controllers.rule_controller.Body.decode_body') as mock_dbody:
-            result = await put_file(request=mock_request,
+            result = await put_file(
                                     body={})
             f_kwargs = {'filename': None,
                         'overwrite': False,
@@ -215,11 +227,11 @@ async def test_put_file(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_reque
                                               is_async=False,
                                               wait_for_complete=False,
                                               logger=ANY,
-                                              rbac_permissions=mock_request['token_info']['rbac_policies']
+                                              rbac_permissions=mock_request.context['token_info']['rbac_policies']
                                               )
             mock_exc.assert_called_once_with(mock_dfunc.return_value)
             mock_remove.assert_called_once_with(f_kwargs)
-            assert isinstance(result, web_response.Response)
+            assert isinstance(result, ConnexionResponse)
 
 
 @pytest.mark.asyncio
@@ -227,9 +239,9 @@ async def test_put_file(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_reque
 @patch('api.controllers.rule_controller.remove_nones_to_dict')
 @patch('api.controllers.rule_controller.DistributedAPI.__init__', return_value=None)
 @patch('api.controllers.rule_controller.raise_if_exc', return_value=CustomAffectedItems())
-async def test_delete_file(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_request=MagicMock()):
+async def test_delete_file(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_request):
     """Verify 'delete_file' endpoint is working as expected."""
-    result = await delete_file(request=mock_request)
+    result = await delete_file()
     f_kwargs = {'filename': None, 
                 'relative_dirname': None}
     
@@ -239,8 +251,8 @@ async def test_delete_file(mock_exc, mock_dapi, mock_remove, mock_dfunc, mock_re
                                       is_async=False,
                                       wait_for_complete=False,
                                       logger=ANY,
-                                      rbac_permissions=mock_request['token_info']['rbac_policies']
+                                      rbac_permissions=mock_request.context['token_info']['rbac_policies']
                                       )
     mock_exc.assert_called_once_with(mock_dfunc.return_value)
     mock_remove.assert_called_once_with(f_kwargs)
-    assert isinstance(result, web_response.Response)
+    assert isinstance(result, ConnexionResponse)

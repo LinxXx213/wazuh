@@ -2,11 +2,11 @@
 # Created by Wazuh, Inc. <info@wazuh.com>.
 # This program is a free software; you can redistribute it and/or modify it under the terms of GPLv2
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+import pytest
+from connexion.testing import TestContext
 
-with patch('wazuh.common.wazuh_uid'):
-    with patch('wazuh.common.wazuh_gid'):
-        from wazuh.core.results import AffectedItemsWazuhResult
+from wazuh.core.results import AffectedItemsWazuhResult
 
 
 class CustomAffectedItems(AffectedItemsWazuhResult):
